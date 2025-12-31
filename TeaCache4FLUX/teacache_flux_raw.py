@@ -291,3 +291,28 @@ def teacache_forward(
             return (output,)
 
         return Transformer2DModelOutput(sample=output)
+
+FluxTransformer2DModel.forward = teacache_forward
+num_inference_steps = 28
+seed = 42
+prompt = "An image of a man in Picasso style"
+pipeline = DiffusionPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.float16)
+pipeline.enable_model_cpu_offload() #save some VRAM by offloading the model to CPU. Remove this if you have enough GPU power
+
+# TeaCache
+pipeline.transformer.__class__.enable_teacache = True
+pipeline.transformer.__class__.cnt = 0
+pipeline.transformer.__class__.num_steps = num_inference_steps
+pipeline.transformer.__class__.rel_l1_thresh = 0.6 # 0.25 for 1.5x speedup, 0.4 for 1.8x speedup, 0.6 for 2.0x speedup, 0.8 for 2.25x speedup
+pipeline.transformer.__class__.accumulated_rel_l1_distance = 0
+pipeline.transformer.__class__.previous_modulated_input = None
+pipeline.transformer.__class__.previous_residual = None
+
+
+pipeline.to("cuda")
+img = pipeline(
+    prompt, 
+    num_inference_steps=num_inference_steps,
+    generator=torch.Generator("cpu").manual_seed(seed)
+    ).images[0]
+img.save("{}.png".format('TeaCache_' + prompt))
